@@ -9,9 +9,9 @@ operating system.
 This repository offers two implementations, one in Python 3 and another in Golang.
 
 
-# Design and caveats
+## Design and caveats
 
-## Why are we tampering with /etc/hosts?
+**Why are we tampering with /etc/hosts?**
 
 When running the game in your browser, the saving mechanism writes to the browser cache
 (LocalStorage) instead of the disk (which is the behaviour of Game.exe).
@@ -28,22 +28,23 @@ A backup of the original `/etc/hosts` will be retained while the HTTP server is 
 I'll add an option later to disable this temporary DNS, which will also avoid `sudo`.
 
 
-# Usage
+## Usage
 
-## pymv (requires Python 3.7+)
+**pymv (requires Python 3.7+)**
 
 ```sh
 # Make a copy of the script where Game.exe resides
 cp pymv.py /path/to/game
 
 # Run with default options
+# sudo is required, because we're modifying /etc/hosts
 sudo python3 ./pymv.py
 
 # Show usage hints
 python3 ./pymv.py -h
 ```
 
-## gomv (requires Go)
+**gomv (requires Go)**
 
 ```sh
 cd gomv
