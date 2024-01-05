@@ -33,35 +33,29 @@ I'll add an option later to disable this temporary DNS, which will also avoid `s
 **pymv (requires Python 3.7+)**
 
 ```sh
-# Make a copy of the script where Game.exe resides
-cp pymv.py /path/to/game
-
-# Run with default options
-# sudo is required, because we're modifying /etc/hosts
+# Option 1: Copy the script to the game directory where Game.exe is, then execute
+cp pymv.py /path/to/game/dir
+cd /path/to/game/dir
 sudo python3 ./pymv.py
 
-# Show usage hints
-python3 ./pymv.py -h
+# Option 2: Don't move the script, just pass --dir
+cd /path/to/game/dir
+sudo python3 /git/serve-mv/pymv.py --dir .
 ```
 
 **gomv (requires Go)**
 
 ```sh
-cd gomv
-
-# Install deps
+# Install deps and build
 go get
-
-# Build binary
 go build -o gomv
 
-# Move it to the same path where Game.exe resides
-mv gomv /path/to/game
-
-# Run with default options.
-# sudo is required, because we're modifying /etc/hosts
+# Option 1: Copy the binary to the game directory where Game.exe is, then execute
+cp gomv /path/to/game/dir
+cd /path/to/game/dir
 sudo ./gomv
 
-# Show usage hints
-./gomv -h
+# Option 2: Don't move the binary, just pass --dir
+cd /path/to/game/dir
+sudo /git/serve-mv/gomv --dir .
 ```
