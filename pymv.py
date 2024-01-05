@@ -1,5 +1,6 @@
 import argparse
 import contextlib
+import datetime
 import hashlib
 import http.server
 import json
@@ -7,7 +8,7 @@ import os
 from pathlib import Path
 import shutil
 import socket
-import datetime
+
 
 DEFAULT_DNS = "serve-mv.local"
 DEFAULT_DNS_SUBDOMAIN = '(generated from System.json["gameTitle"])'
@@ -136,7 +137,7 @@ def serve(directory: str, port: int, tmpdns: TempDNS):
             self.RequestHandlerClass(request, client_address, self, directory=directory)
 
     with tmpdns.context() as host:
-        log(f"Starting server - - - http://{tmpdns.hostname}:{port}/www/index.html")
+        log(f"Starting server - - - http://{host}:{port}/www/index.html")
         http.server.test(
             HandlerClass=http.server.SimpleHTTPRequestHandler,
             ServerClass=Server,
