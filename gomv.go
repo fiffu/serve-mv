@@ -7,10 +7,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/fs"
 	"net/http"
 	"os"
 	"os/signal"
 	"path"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -194,16 +196,94 @@ func NewSystemJSON(directory string) (ret SystemJSON, err error) {
 }
 
 type GameServer struct {
-	Options
+	port    int
+	fileSrv http.Handler
+	dir     fs.FS
+	cache   map[string]*cachedResponse
 }
 
-func (gs GameServer) Listen() {
-	fileServer := http.FileServer(http.Dir(gs.Directory))
-	http.Handle("/", fileServer)
-	http.ListenAndServe(fmt.Sprintf(":%d", gs.Port), nil)
+type cachedResponse struct {
+	status int
+	header http.Header
+	buf    bytes.Buffer
 }
 
-func (gs GameServer) WaitUntilInterrupt() {
+func (cr *cachedResponse) writeTo(w http.ResponseWriter) error {
+	for k, vs := range cr.header {
+		w.Header()[k] = vs
+	}
+	w.WriteHeader(cr.status)
+	_, err := w.Write(cr.buf.Bytes())
+	return err
+}
+
+func (cr *cachedResponse) Header() http.Header {
+	if cr.header == nil {
+		cr.header = http.Header{}
+	}
+	return cr.header
+}
+
+func (cr *cachedResponse) Write(data []byte) (int, error) {
+	return cr.buf.Write(data)
+}
+
+func (cr *cachedResponse) WriteHeader(statusCode int) {
+	cr.status = statusCode
+}
+
+func NewGameServer(opts Options) *GameServer {
+	return &GameServer{
+		opts.Port,
+		http.FileServer(http.Dir(opts.Directory)),
+		os.DirFS(opts.Directory),
+		make(map[string]*cachedResponse),
+	}
+}
+
+func (gs *GameServer) Listen() {
+	http.Handle("/", gs)
+	http.ListenAndServe(fmt.Sprintf(":%d", gs.port), nil)
+}
+
+func (gs *GameServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	path := r.URL.Path
+
+	cached, ok := gs.cache[path]
+	if !ok {
+		cached = gs.fetch(w, r)
+
+		if cached.status == http.StatusNotFound {
+			if altPath := gs.glob(path); altPath != "" {
+				r.URL.Path = altPath
+				cached = gs.fetch(w, r)
+			}
+		}
+
+		gs.cache[path] = cached
+	}
+
+	if err := cached.writeTo(w); err != nil {
+		fmt.Printf("errored while writing cached response for %s: %v\n", path, err)
+		w.WriteHeader(500)
+	}
+}
+
+func (gs *GameServer) fetch(w http.ResponseWriter, r *http.Request) *cachedResponse {
+	ret := &cachedResponse{}
+	gs.fileSrv.ServeHTTP(ret, r)
+	return ret
+}
+
+func (gs *GameServer) glob(path string) string {
+	matches, _ := filepath.Glob(CaseInsensitiveGlobstr(path))
+	if len(matches) == 1 {
+		return matches[0]
+	}
+	return ""
+}
+
+func (gs *GameServer) WaitUntilInterrupt() {
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt)
 	<-stop
@@ -218,7 +298,7 @@ func Listen(opts Options) error {
 	return tmp.WithDNS(func(hostName string) {
 		fmt.Printf("Starting server - - - http://%s:%d/www/index.html\n", hostName, opts.Port)
 
-		game := GameServer{opts}
+		game := NewGameServer(opts)
 		game.Listen()
 		game.WaitUntilInterrupt()
 
