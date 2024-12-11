@@ -7,10 +7,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/fs"
 	"net/http"
 	"os"
-	"os/signal"
 	"path"
 	"path/filepath"
 	"strings"
@@ -197,9 +195,11 @@ func NewSystemJSON(directory string) (ret SystemJSON, err error) {
 
 type GameServer struct {
 	port    int
+	dir     string
 	fileSrv http.Handler
-	dir     fs.FS
 	cache   map[string]*cachedResponse
+
+	cacheHit, cacheMiss uint64
 }
 
 type cachedResponse struct {
@@ -208,13 +208,14 @@ type cachedResponse struct {
 	buf    bytes.Buffer
 }
 
-func (cr *cachedResponse) writeTo(w http.ResponseWriter) error {
+func (cr *cachedResponse) writeTo(w http.ResponseWriter) {
 	for k, vs := range cr.header {
-		w.Header()[k] = vs
+		for _, v := range vs {
+			w.Header().Add(k, v)
+		}
 	}
 	w.WriteHeader(cr.status)
-	_, err := w.Write(cr.buf.Bytes())
-	return err
+	w.Write(cr.buf.Bytes())
 }
 
 func (cr *cachedResponse) Header() http.Header {
@@ -235,22 +236,39 @@ func (cr *cachedResponse) WriteHeader(statusCode int) {
 func NewGameServer(opts Options) *GameServer {
 	return &GameServer{
 		opts.Port,
+		opts.Directory,
 		http.FileServer(http.Dir(opts.Directory)),
-		os.DirFS(opts.Directory),
 		make(map[string]*cachedResponse),
+		0, 0,
 	}
 }
 
-func (gs *GameServer) Listen() {
+func (gs *GameServer) Start() {
 	http.Handle("/", gs)
-	http.ListenAndServe(fmt.Sprintf(":%d", gs.port), nil)
+
+	server := &http.Server{Addr: fmt.Sprintf(":%d", gs.port), Handler: nil}
+	server.RegisterOnShutdown(func() {
+		fmt.Println(
+			"Cache hit rate: %d/%d (%.2f%)",
+			gs.cacheHit,
+			gs.cacheHit+gs.cacheMiss,
+			gs.cacheHit/(gs.cacheHit+gs.cacheMiss)*100,
+		)
+		fmt.Println("Server stopping...")
+	})
+	server.ListenAndServe()
 }
 
 func (gs *GameServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	path := r.URL.Path
 
 	cached, ok := gs.cache[path]
-	if !ok {
+	if ok {
+		gs.cacheHit++
+	} else {
+		fmt.Println("[miss]", path)
+		gs.cacheMiss++
+
 		cached = gs.fetch(w, r)
 
 		if cached.status == http.StatusNotFound {
@@ -263,10 +281,10 @@ func (gs *GameServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		gs.cache[path] = cached
 	}
 
-	if err := cached.writeTo(w); err != nil {
-		fmt.Printf("errored while writing cached response for %s: %v\n", path, err)
-		w.WriteHeader(500)
+	if cached.status == http.StatusNotFound {
+		fmt.Println("[404 ]", path)
 	}
+	cached.writeTo(w)
 }
 
 func (gs *GameServer) fetch(w http.ResponseWriter, r *http.Request) *cachedResponse {
@@ -276,17 +294,17 @@ func (gs *GameServer) fetch(w http.ResponseWriter, r *http.Request) *cachedRespo
 }
 
 func (gs *GameServer) glob(path string) string {
-	matches, _ := filepath.Glob(CaseInsensitiveGlobstr(path))
+	root := gs.dir
+	parent := filepath.Dir(path)
+	file := filepath.Base(path)
+
+	globStr := fmt.Sprintf("%s/%s/%s", root, parent, CaseInsensitiveGlobstr(file))
+
+	matches, _ := filepath.Glob(globStr)
 	if len(matches) == 1 {
 		return matches[0]
 	}
 	return ""
-}
-
-func (gs *GameServer) WaitUntilInterrupt() {
-	stop := make(chan os.Signal, 1)
-	signal.Notify(stop, os.Interrupt)
-	<-stop
 }
 
 func Listen(opts Options) error {
@@ -298,10 +316,6 @@ func Listen(opts Options) error {
 	return tmp.WithDNS(func(hostName string) {
 		fmt.Printf("Starting server - - - http://%s:%d/www/index.html\n", hostName, opts.Port)
 
-		game := NewGameServer(opts)
-		game.Listen()
-		game.WaitUntilInterrupt()
-
-		fmt.Println("Interrupted! Shutting down...")
+		NewGameServer(opts).Start()
 	})
 }
