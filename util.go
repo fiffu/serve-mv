@@ -21,3 +21,14 @@ func CaseInsensitiveGlobstr(path string) string {
 	}
 	return p
 }
+
+func must(err error) {
+	if err != nil {
+		panic(err.Error())
+	}
+}
+
+func mustReturn[T any](ret T, err error) T {
+	must(err)
+	return ret
+}

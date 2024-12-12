@@ -10,16 +10,12 @@ import (
 // Defaults
 const (
 	DefaultDirectory = "."
-	DefaultDomain    = "serve-mv.local"
-	DefaultSubdomain = ""
 	DefaultPort      = 9001
 )
 
 func parseArgs(parsed *cli.Context) Options {
 	return Options{
 		Directory: parsed.String("dir"),
-		Domain:    parsed.String("domain"),
-		Subdomain: parsed.String("subdomain"),
 		Port:      parsed.Int("port"),
 	}
 }
@@ -33,17 +29,6 @@ func main() {
 				Value:       DefaultDirectory,
 				Usage:       "serve this directory",
 				DefaultText: "current directory",
-			},
-			&cli.StringFlag{
-				Name:  "domain",
-				Value: DefaultDomain,
-				Usage: "the DNS domain to use",
-			},
-			&cli.StringFlag{
-				Name:        "subdomain",
-				Value:       DefaultSubdomain,
-				Usage:       "the DNS subdomain to use",
-				DefaultText: `generated using md5 of "gameTitle" from System.json`,
 			},
 			&cli.IntFlag{
 				Name:  "port",
