@@ -30,23 +30,8 @@ I'll add an option later to disable this temporary DNS, which will also avoid `s
 
 ## Usage
 
-**pymv (requires Python 3.7+)**
-
 ```sh
-# Option 1: Copy the script to the game directory where Game.exe is, then execute
-cp pymv.py /path/to/game/dir
-cd /path/to/game/dir
-sudo python3 ./pymv.py
-
-# Option 2: Don't move the script, just pass --dir
-cd /path/to/game/dir
-sudo python3 /git/serve-mv/pymv.py --dir .
-```
-
-**gomv (requires Go)**
-
-```sh
-# Install deps and build
+# Build the binary
 go get
 go build -o gomv
 
