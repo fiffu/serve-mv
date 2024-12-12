@@ -1,8 +1,11 @@
 package main
 
 import (
+	"context"
 	"log"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/urfave/cli/v2"
 )
@@ -38,14 +41,23 @@ func main() {
 		},
 		Action: func(c *cli.Context) error {
 			opts := parseArgs(c)
-			if err := Listen(opts); err != nil {
-				return err
-			}
+			Listen(opts)
 			return nil
 		},
 	}
 
-	if err := app.Run(os.Args); err != nil {
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		defer cancel()
+		c := make(chan os.Signal, 1)
+		signal.Notify(c, syscall.SIGINT, syscall.SIGTERM)
+		<-c
+
+		Server.PrintReport()
+		os.Exit(0)
+	}()
+
+	if err := app.RunContext(ctx, os.Args); err != nil {
 		log.Fatal(err)
 	}
 }

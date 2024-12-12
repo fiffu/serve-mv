@@ -10,6 +10,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"sync"
 )
 
 type Options struct {
@@ -28,15 +29,6 @@ func MustNewSystemJSON(directory string) (ret SystemJSON) {
 	jsonBytes := mustReturn(os.ReadFile(jsonPath))
 	must(json.Unmarshal(jsonBytes, &ret))
 	return
-}
-
-type GameServer struct {
-	port    int
-	dir     string
-	fileSrv http.Handler
-	cache   map[string]*cachedResponse
-
-	cacheHit, cacheMiss uint64
 }
 
 type cachedResponse struct {
@@ -70,17 +62,25 @@ func (cr *cachedResponse) WriteHeader(statusCode int) {
 	cr.status = statusCode
 }
 
-func NewGameServer(opts Options) *GameServer {
-	return &GameServer{
-		opts.Port,
-		opts.Directory,
-		http.FileServer(http.Dir(opts.Directory)),
-		make(map[string]*cachedResponse),
-		0, 0,
-	}
+type gameSrv struct {
+	port    int
+	dir     string
+	fileSrv http.Handler
+	cache   sync.Map
+
+	cacheHit, cacheMiss int64
 }
 
-func (gs *GameServer) TitleHash() string {
+func (gs *gameSrv) initialize(opts Options) {
+	gs.port = opts.Port
+	gs.dir = opts.Directory
+	gs.fileSrv = http.FileServer(http.Dir(opts.Directory))
+	gs.cache = sync.Map{}
+	gs.cacheHit = 0
+	gs.cacheMiss = 0
+}
+
+func (gs *gameSrv) titleHash() string {
 	title := MustNewSystemJSON(gs.dir).GameTitle
 
 	sum := md5.Sum([]byte(title))
@@ -88,57 +88,69 @@ func (gs *GameServer) TitleHash() string {
 	return titleHash
 }
 
-func (gs *GameServer) Start() {
-	http.Handle("/", gs)
+func (gs *gameSrv) PrintReport() {
+	fmt.Println()
+	if gs == nil {
+		return
+	}
 
-	server := &http.Server{Addr: fmt.Sprintf(":%d", gs.port), Handler: nil}
-	server.RegisterOnShutdown(func() {
-		fmt.Println(
-			"Cache hit rate: %d/%d (%.2f%)",
+	cacheTotal := gs.cacheHit + gs.cacheMiss
+	cacheRatio := float64(gs.cacheHit) / float64(cacheTotal)
+	if (cacheTotal) > 0 {
+		fmt.Printf(
+			"Cache hit rate: %d / %d = %.0f%%",
 			gs.cacheHit,
-			gs.cacheHit+gs.cacheMiss,
-			gs.cacheHit/(gs.cacheHit+gs.cacheMiss)*100,
+			cacheTotal,
+			cacheRatio*100,
 		)
-		fmt.Println("Server stopping...")
-	})
-	server.ListenAndServe()
+		fmt.Println()
+	}
 }
 
-func (gs *GameServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (gs *gameSrv) Start() {
+	http.Handle("/", gs)
+	http.ListenAndServe(fmt.Sprintf(":%d", gs.port), nil)
+}
+
+func (gs *gameSrv) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	path := r.URL.Path
 
-	cached, ok := gs.cache[path]
+	var resp *cachedResponse
+
+	cached, ok := gs.cache.Load(path)
 	if ok {
+		resp = cached.(*cachedResponse)
 		gs.cacheHit++
 	} else {
 		fmt.Println("[miss]", path)
 		gs.cacheMiss++
 
-		cached = gs.fetch(w, r)
+		resp = gs.fetch(w, r)
 
-		if cached.status == http.StatusNotFound {
+		if resp.status == http.StatusNotFound {
 			if altPath := gs.glob(path); altPath != "" {
 				r.URL.Path = altPath
-				cached = gs.fetch(w, r)
+
+				resp = gs.fetch(w, r)
 			}
 		}
 
-		gs.cache[path] = cached
+		gs.cache.Store(path, resp)
 	}
 
-	if cached.status == http.StatusNotFound {
+	if resp.status == http.StatusNotFound {
 		fmt.Println("[404 ]", path)
 	}
-	cached.writeTo(w)
+	resp.writeTo(w)
 }
 
-func (gs *GameServer) fetch(w http.ResponseWriter, r *http.Request) *cachedResponse {
+func (gs *gameSrv) fetch(w http.ResponseWriter, r *http.Request) *cachedResponse {
 	ret := &cachedResponse{}
 	gs.fileSrv.ServeHTTP(ret, r)
 	return ret
 }
 
-func (gs *GameServer) glob(path string) string {
+func (gs *gameSrv) glob(path string) string {
 	root := gs.dir
 	parent := filepath.Dir(path)
 	file := filepath.Base(path)
@@ -152,11 +164,13 @@ func (gs *GameServer) glob(path string) string {
 	return ""
 }
 
-func Listen(opts Options) error {
-	gs := NewGameServer(opts)
+var Server = &gameSrv{}
 
-	fmt.Printf("Hosting game on: http://gomv-%s.localtest.me:%d/www/index.html\n", gs.TitleHash(), opts.Port)
-	gs.Start()
+func Listen(opts Options) error {
+	Server.initialize(opts)
+
+	fmt.Printf("Hosting game on: http://gomv-%s.localtest.me:%d/www/index.html\n", Server.titleHash(), opts.Port)
+	Server.Start()
 
 	return nil
 }
