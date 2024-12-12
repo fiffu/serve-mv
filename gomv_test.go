@@ -10,9 +10,6 @@ import (
 
 func withTemp(t *testing.T, dir, fileName string, callback func(tmpDir string, tmpFile *os.File)) {
 	tmpRoot := os.TempDir()
-	// if err != nil {
-	// 	t.Fatal(err)
-	// }
 
 	tmpDirPath := path.Join(tmpRoot, dir)
 	if err := os.MkdirAll(tmpDirPath, 0777); err != nil {

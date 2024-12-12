@@ -43,7 +43,7 @@ func main() {
 				Name:        "subdomain",
 				Value:       DefaultSubdomain,
 				Usage:       "the DNS subdomain to use",
-				DefaultText: `generated from System.json["gameTitle"]`,
+				DefaultText: `generated using md5 of "gameTitle" from System.json`,
 			},
 			&cli.IntFlag{
 				Name:  "port",
