@@ -41,8 +41,7 @@ func main() {
 		},
 		Action: func(c *cli.Context) error {
 			opts := parseArgs(c)
-			Listen(opts)
-			return nil
+			return Listen(opts)
 		},
 	}
 

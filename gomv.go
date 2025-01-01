@@ -107,9 +107,9 @@ func (gs *gameSrv) PrintReport() {
 	}
 }
 
-func (gs *gameSrv) Start() {
+func (gs *gameSrv) Start() error {
 	http.Handle("/", gs)
-	http.ListenAndServe(fmt.Sprintf(":%d", gs.port), nil)
+	return http.ListenAndServe(fmt.Sprintf(":%d", gs.port), nil)
 }
 
 func (gs *gameSrv) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -170,7 +170,5 @@ func Listen(opts Options) error {
 	Server.initialize(opts)
 
 	fmt.Printf("Hosting game on: http://gomv-%s.localtest.me:%d/www/index.html\n", Server.titleHash(), opts.Port)
-	Server.Start()
-
-	return nil
+	return Server.Start()
 }
